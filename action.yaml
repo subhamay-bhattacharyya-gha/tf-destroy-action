@@ -56,44 +56,50 @@ runs:
           -backend-config="encrypt=true" \
           -backend-config="dynamodb_table=${{ inputs.dynamodb-table }}"
 
-    - name: Terraform Destroy
-      id: destroy
-      working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
-      run: |
-        TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+- name: Terraform Destroy
+  id: destroy
+  working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
+  run: |
+    START_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
 
-        echo "## ☠️ Terraform Destroy Output" >> "$GITHUB_STEP_SUMMARY"
-        echo "_**Started at: ${TIMESTAMP}**_" >> "$GITHUB_STEP_SUMMARY"
-        echo "" >> "$GITHUB_STEP_SUMMARY"
+    echo "## ☠️ Terraform Destroy Output" >> "$GITHUB_STEP_SUMMARY"
+    echo "_**Started at: ${START_TIME}**_" >> "$GITHUB_STEP_SUMMARY"
+    echo "" >> "$GITHUB_STEP_SUMMARY"
 
-        terraform destroy -auto-approve -input=false | tee destroy_output.txt || exit 1
+    # Generate destroy plan and JSON view
+    terraform plan -destroy -out=tfplan-destroy.out -input=false
+    terraform show -json tfplan-destroy.out > tfplan-destroy.json
 
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-        echo "### Destroyed Resources" >> "$GITHUB_STEP_SUMMARY"
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-        echo "| Resource Type | Resource Name     | Resource ID                        | Timestamp               |" >> "$GITHUB_STEP_SUMMARY"
-        echo "|---------------|--------------------|-------------------------------------|--------------------------|" >> "$GITHUB_STEP_SUMMARY"
+    echo "---------------------"
+    cat tfplan-destroy.json
+    echo "---------------------"
 
-        awk -v timestamp="$TIMESTAMP" '
-          BEGIN {
-            print "| Resource Type | Resource Name     | Resource ID                        | Timestamp               |"
-            print "|---------------|--------------------|-------------------------------------|--------------------------|"
-          }
-          /^[a-zA-Z0-9_]+\.[a-zA-Z0-9_\.]+: Destroying.*\[id=/ {
-            match($0, /^([a-zA-Z0-9_]+\.[a-zA-Z0-9_\.]+): Destroying.*\[id=([^\]]+)\]/, arr)
-            if (arr[1] && arr[2]) {
-              key = arr[1]
-              id = arr[2]
-              type=substr(key, 1, index(key, ".")-1)
-              name=substr(key, index(key, ".")+1)
-              printf("| %-13s | %-18s | %-35s | %-24s |\n", type, name, id, timestamp)
-            }
-          }
-        ' destroy_output.txt >> "$GITHUB_STEP_SUMMARY"
+    # Perform the actual destroy
+    terraform destroy -auto-approve -input=false | tee destroy_output.txt || exit 1
 
+    echo "" >> "$GITHUB_STEP_SUMMARY"
+    echo "### Resources Destroyed" >> "$GITHUB_STEP_SUMMARY"
+    echo "" >> "$GITHUB_STEP_SUMMARY"
+    echo "| Resource Type | Resource Name     | Address                          | Timestamp               |" >> "$GITHUB_STEP_SUMMARY"
+    echo "|---------------|--------------------|----------------------------------|--------------------------|" >> "$GITHUB_STEP_SUMMARY"
 
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-        TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
-        echo "_**Completed at: ${TIMESTAMP}**_" >> "$GITHUB_STEP_SUMMARY"
-        echo "" >> "$GITHUB_STEP_SUMMARY"
-      shell: bash
+    jq -r --arg timestamp "$START_TIME" '
+      .resource_changes[]
+      | select(.change.actions == ["delete"])
+      | [
+          (.type // "-"),
+          (.name // "-"),
+          (.address // "-"),
+          $timestamp
+        ]
+      | @tsv
+    ' tfplan-destroy.json | while IFS=$'\t' read -r type name address timestamp; do
+      echo "| $type | $name | $address | $timestamp |" >> "$GITHUB_STEP_SUMMARY"
+    done
+
+    echo "" >> "$GITHUB_STEP_SUMMARY"
+    END_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+    echo "_**Completed at: ${END_TIME}**_" >> "$GITHUB_STEP_SUMMARY"
+    echo "" >> "$GITHUB_STEP_SUMMARY"
+  shell: bash
+
