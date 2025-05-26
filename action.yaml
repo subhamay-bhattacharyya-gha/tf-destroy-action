@@ -75,26 +75,22 @@ runs:
         echo "|---------------|--------------------|-------------------------------------|--------------------------|" >> "$GITHUB_STEP_SUMMARY"
 
         awk -v timestamp="$TIMESTAMP" '
-          /^[a-zA-Z0-9_]+\.[a-zA-Z0-9_\.]+: Destroying/ {
-            split($0, parts, ":")
-            split(parts[1], res, ".")
-            type=res[1]
-            name=res[2]
-            destroy_map[parts[1]] = type "|" name
+          BEGIN {
+            print "| Resource Type | Resource Name     | Resource ID                        | Timestamp               |"
+            print "|---------------|--------------------|-------------------------------------|--------------------------|"
           }
-          /^[a-zA-Z0-9_]+\.[a-zA-Z0-9_\.]+: Destruction complete/ {
-            match($0, /\[id=([^\]]+)\]/, idmatch)
-            if (idmatch[1] != "") {
-              split($0, parts, ":")
-              key = parts[1]
-              id = idmatch[1]
-              split(destroy_map[key], fields, "|")
-              type=fields[1]
-              name=fields[2]
+          /^[a-zA-Z0-9_]+\.[a-zA-Z0-9_\.]+: Destroying.*\[id=/ {
+            match($0, /^([a-zA-Z0-9_]+\.[a-zA-Z0-9_\.]+): Destroying.*\[id=([^\]]+)\]/, arr)
+            if (arr[1] && arr[2]) {
+              key = arr[1]
+              id = arr[2]
+              type=substr(key, 1, index(key, ".")-1)
+              name=substr(key, index(key, ".")+1)
               printf("| %-13s | %-18s | %-35s | %-24s |\n", type, name, id, timestamp)
             }
           }
         ' destroy_output.txt >> "$GITHUB_STEP_SUMMARY"
+
 
         echo "" >> "$GITHUB_STEP_SUMMARY"
         TIMESTAMP=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
