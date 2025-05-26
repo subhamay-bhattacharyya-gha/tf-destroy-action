@@ -1,44 +1,105 @@
-name: 'Action Name'
-description: 'Action Description'
+name: 'Terraform Destroy and Summary'
+description: 'Destroys Terraform-managed infrastructure and displays a summary in the GitHub Step Summary.'
 
 inputs:
-  input-1:
-    description: Input description.
-    required: false
-    default: default-value
-  input-2:
-    description: Input description.
-    required: false
-    default: default-value
-  input-3:
-    description: Input description.
-    required: false
-    default: default-value
-  github-token:
-    description: 'GitHub token'
+  s3-bucket:
+    description: "S3 bucket for Terraform backend"
     required: true
+
+  s3-region:
+    description: "AWS region where the S3 bucket is located"
+    required: true
+
+  dynamodb-table:
+    description: "DynamoDB table name for state locking"
+    required: true
+
+  terraform-dir:
+    description: 'Directory where Terraform code is located'
+    required: false
+    default: 'tf'
+
+  ci-pipeline:
+    description: "Whether this is a CI pipeline"
+    required: false
+    default: "true"
 
 runs:
   using: 'composite'
   steps:
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: 3.x
 
-    - name: Sample step to call GitHub API
+    - name: Checkout repo
+      uses: actions/checkout@v4
+
+    - name: Setup Terraform
+      uses: hashicorp/setup-terraform@v3
+
+    - name: Compute Backend Key from Repository Name
+      id: key
       shell: bash
-      env:
-        GITHUB_TOKEN: ${{ inputs.github-token }}
       run: |
-        ISSUE_NUMBER="${{ github.event.issue.number }}"
-        REPO="${{ github.repository }}"
-        OWNER=$(echo $REPO | cut -d'/' -f1)
-        BRANCH_NAME="${{ steps.create-branch.outputs.branch-name }}"
-        COMMENT_BODY="Branch [$BRANCH_NAME](https://github.com/$OWNER/$REPO/tree/$BRANCH_NAME) created 🚀"
+        if [[ "${{ inputs.ci-pipeline }}" == "true" ]]; then
+          state_key="${{ github.repository }}/${{ github.sha }}/terraform.tfstate"
+        else
+          state_key="${{ github.repository }}/terraform.tfstate"
+        fi
+        echo "s3_key=$state_key" >> $GITHUB_OUTPUT
 
-        curl -s -X POST \
-          -H "Authorization: token $GITHUB_TOKEN" \
-          -H "Content-Type: application/json" \
-          -d "{\"body\": \"$COMMENT_BODY\"}" \
-          https://api.github.com/repos/$REPO/issues/$ISSUE_NUMBER/comments
+    - name: Terraform Init with S3 Backend
+      shell: bash
+      working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
+      run: |
+        terraform init -input=false \
+          -backend-config="bucket=${{ inputs.s3-bucket }}" \
+          -backend-config="key=${{ steps.key.outputs.s3_key }}" \
+          -backend-config="region=${{ inputs.s3-region }}" \
+          -backend-config="encrypt=true" \
+          -backend-config="dynamodb_table=${{ inputs.dynamodb-table }}"
+
+    - name: Terraform Destroy
+      id: destroy
+      working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
+      run: |
+        START_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+
+        echo "## ☠️ Terraform Destroy Output" >> "$GITHUB_STEP_SUMMARY"
+        echo "_**Started at: ${START_TIME}**_" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+
+        # Generate destroy plan and JSON view
+        terraform plan -destroy -out=tfplan-destroy.out -input=false
+        terraform show -json tfplan-destroy.out > tfplan-destroy.json
+
+        echo "---------------------"
+        cat tfplan-destroy.json
+        echo "---------------------"
+
+        # Perform the actual destroy
+        terraform destroy -auto-approve -input=false | tee destroy_output.txt || exit 1
+
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "### Resources Destroyed" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        echo "| Resource Type | Resource Name     | Address                          | Timestamp               |" >> "$GITHUB_STEP_SUMMARY"
+        echo "|---------------|--------------------|----------------------------------|--------------------------|" >> "$GITHUB_STEP_SUMMARY"
+
+        jq -r --arg timestamp "$START_TIME" '
+          .resource_changes[]
+          | select(.change.actions == ["delete"])
+          | [
+              (.type // "-"),
+              (.name // "-"),
+              (.address // "-"),
+              $timestamp
+            ]
+          | @tsv
+        ' tfplan-destroy.json | while IFS=$'\t' read -r type name address timestamp; do
+          echo "| $type | $name | $address | $timestamp |" >> "$GITHUB_STEP_SUMMARY"
+        done
+
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+        END_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
+        echo "_**Completed at: ${END_TIME}**_" >> "$GITHUB_STEP_SUMMARY"
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+      shell: bash
+

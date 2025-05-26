@@ -1,51 +1,68 @@
-# GitHub Action Template Repository
+# GitHub Action: Terraform Destroy and Summary
 
-![Release](https://github.com/subhamay-bhattacharyya-gha/github-action-template/actions/workflows/release.yaml/badge.svg)&nbsp;![Commit Activity](https://img.shields.io/github/commit-activity/t/subhamay-bhattacharyya-gha/github-action-template)&nbsp;![Last Commit](https://img.shields.io/github/last-commit/subhamay-bhattacharyya-gha/github-action-template)&nbsp;![Release Date](https://img.shields.io/github/release-date/subhamay-bhattacharyya-gha/github-action-template)&nbsp;![Repo Size](https://img.shields.io/github/repo-size/subhamay-bhattacharyya-gha/github-action-template)&nbsp;![File Count](https://img.shields.io/github/directory-file-count/subhamay-bhattacharyya-gha/github-action-template)&nbsp;![Issues](https://img.shields.io/github/issues/subhamay-bhattacharyya-gha/github-action-template)&nbsp;![Top Language](https://img.shields.io/github/languages/top/subhamay-bhattacharyya-gha/github-action-template)&nbsp;![Custom Endpoint](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bsubhamay/06e35985280456b113298ed56c626e73/raw/github-action-template.json?)
+![Release](https://github.com/subhamay-bhattacharyya-gha/tf-destroy-action/actions/workflows/release.yaml/badge.svg)&nbsp;![Commit Activity](https://img.shields.io/github/commit-activity/t/subhamay-bhattacharyya-gha/tf-destroy-action)&nbsp;![Last Commit](https://img.shields.io/github/last-commit/subhamay-bhattacharyya-gha/tf-destroy-action)&nbsp;![Release Date](https://img.shields.io/github/release-date/subhamay-bhattacharyya-gha/tf-destroy-action)&nbsp;![Repo Size](https://img.shields.io/github/repo-size/subhamay-bhattacharyya-gha/tf-destroy-action)&nbsp;![File Count](https://img.shields.io/github/directory-file-count/subhamay-bhattacharyya-gha/tf-destroy-action)&nbsp;![Issues](https://img.shields.io/github/issues/subhamay-bhattacharyya-gha/tf-destroy-action)&nbsp;![Top Language](https://img.shields.io/github/languages/top/subhamay-bhattacharyya-gha/tf-destroy-action)&nbsp;![Custom Endpoint](https://img.shields.io/endpoint?url=https://gist.githubusercontent.com/bsubhamay/e15bf74830c9bea324a8b87e1f11a2fb/raw/tf-destroy-action.json?)
 
-A Template GitHub Repository to be used to create a composite action.
-
-## Action Name
-
-### Action Description
-
-This GitHub Action provides a reusable composite workflow that sets up Python and interacts with the GitHub API to post a comment on an issue, including a link to a created branch.
+A GitHub Composite Action to safely destroy Terraform-managed infrastructure using remote backend and show a clear, timestamped summary in the GitHub Actions Step Summary.
 
 ---
 
-## Inputs
+## 🔧 Features
 
-| Name           | Description         | Required | Default        |
-|----------------|---------------------|----------|----------------|
-| `input-1`      | Input description.  | No       | `default-value`|
-| `input-2`      | Input description.  | No       | `default-value`|
-| `input-3`      | Input description.  | No       | `default-value`|
-| `github-token` | GitHub token. Used for API authentication. | Yes | — |
+- Initializes Terraform backend using S3 and DynamoDB
+- Computes dynamic backend key based on CI pipeline context
+- Creates a destroy plan (`terraform plan -destroy`) and parses it via JSON
+- Runs `terraform destroy` with full logging
+- Summarizes resources destroyed in a Markdown table:
+  - Resource Type
+  - Resource Name
+  - Address
+  - Timestamp
+- Displays destruction logs and status in GitHub Step Summary
 
 ---
 
-## Example Usage
+## 📥 Inputs
+
+| Name              | Description                                                         | Required | Default |
+|-------------------|---------------------------------------------------------------------|----------|---------|
+| `s3-bucket`        | S3 bucket for Terraform backend                                     | Yes      | —       |
+| `s3-region`        | AWS region where the S3 bucket is located                           | Yes      | —       |
+| `dynamodb-table`   | DynamoDB table name for state locking                               | Yes      | —       |
+| `terraform-dir`    | Directory where Terraform code is located                           | No       | `tf`    |
+| `ci-pipeline`      | Whether this is a CI pipeline (adds commit SHA to backend key path) | No       | `true`  |
+
+---
+
+## 🚀 Example Usage
 
 ```yaml
-name: Example Workflow
+name: Terraform Destroy Workflow
 
 on:
-  issues:
-    types: [opened]
+  workflow_dispatch:
 
 jobs:
-  example:
+  terraform-destroy:
     runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+    permissions:
+      id-token: write
+      contents: read
 
-      - name: Run Custom Action
-        uses: your-org/your-action-repo@v1
+    steps:
+      - name: Configure AWS Credentials via OIDC
+        uses: aws-actions/configure-aws-credentials@v2
         with:
-          github-token: ${{ secrets.GITHUB_TOKEN }}
-          input-1: your-value
-          input-2: another-value
-          input-3: something-else
+          role-to-assume: arn:aws:iam::123456789012:role/GitHubActionsTerraformRole
+          aws-region: us-east-1
+
+      - name: Destroy Terraform Infrastructure
+        uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
+        with:
+          terraform-dir: tf
+          s3-bucket: gha-terraform-state
+          s3-region: us-east-1
+          dynamodb-table: gha-terraform-lock
+
 ```
 
 ## License
