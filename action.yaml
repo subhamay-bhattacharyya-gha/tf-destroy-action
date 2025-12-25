@@ -1,4 +1,4 @@
-name: 'Terraform Destroy and Summary'
+name: 'Terraform Destroy (Multi Cloud) and Summary'
 description: 'Destroys Terraform-managed infrastructure and displays a summary in the GitHub Step Summary.'
 
 inputs:
@@ -354,5 +354,4 @@ runs:
         END_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
         echo "_**Completed at: ${END_TIME}**_" >> "$GITHUB_STEP_SUMMARY"
         echo "" >> "$GITHUB_STEP_SUMMARY"
-      shell: bash
 
