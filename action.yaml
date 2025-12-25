@@ -1,4 +1,4 @@
-name: 'Terraform Destroy and Summary'
+name: 'Terraform Destroy (Multi Cloud) and Summary'
 description: 'Destroys Terraform-managed infrastructure and displays a summary in the GitHub Step Summary.'
 
 inputs:
