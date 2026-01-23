@@ -2,18 +2,21 @@ name: 'Terraform Destroy (Multi Cloud) and Summary'
 description: 'Destroys Terraform-managed infrastructure and displays a summary in the GitHub Step Summary.'
 
 inputs:
+  # Cloud Provider Selection
+  cloud-provider:
+    description: "Cloud provider for backend storage. Options: 'aws', 'azure', 'gcp', 'databricks', 'snowflake'"
+    required: true
+    type: string
   terraform-dir:
     description: "Relative path to the directory containing Terraform configuration files (e.g., 'tf', 'infrastructure')."
     required: false
     type: string
     default: "tf"
-
   release-tag:
     description: "Git release tag to check out. If omitted, the latest commit on the default branch is used."
     required: false
     type: string
     default: ""
-
   ci-pipeline:
     description: "Set to 'true' to include the commit SHA in the Terraform state key (suitable for CI/CD). Use 'false' for static state keys."
     required: false
@@ -27,11 +30,6 @@ inputs:
     type: string
     default: "s3"
 
-  # Cloud Provider Selection
-  cloud-provider:
-    description: "Cloud provider for backend storage. Options: 'aws', 'azure', 'gcp'"
-    required: true
-    type: string
 
   # AWS S3 Backend Configuration
   s3-bucket:
@@ -94,6 +92,39 @@ inputs:
     required: false
     type: string
 
+  # Snowflake Authentication Inputs
+  snowflake-account:
+    description: "Snowflake account identifier. Required when cloud-provider is 'snowflake'."
+    required: false
+    type: string
+
+  snowflake-user:
+    description: "Snowflake user name. Required when cloud-provider is 'snowflake'."
+    required: false
+    type: string
+
+  snowflake-role:
+    description: "Snowflake role name. Required when cloud-provider is 'snowflake'."
+    required: false
+    type: string
+
+  # Snowflake Authentication Secret
+  snowflake-private-key:
+    description: "Snowflake private key for authentication. Required when cloud-provider is 'snowflake'."
+    required: false
+    type: string
+
+  # Databricks Authentication Secrets
+  databricks-host:
+    description: "Databricks workspace URL. Required when cloud-provider is 'databricks'."
+    required: false
+    type: string
+
+  databricks-token:
+    description: "Databricks personal access token. Required when cloud-provider is 'databricks'."
+    required: false
+    type: string
+
 runs:
   using: 'composite'
   steps:
@@ -106,7 +137,7 @@ runs:
     # Checkout Repo - Get the code
     # Setup Terraform - Install Terraform
     # Download Terraform plan artifact - Get the plan file
-    # Configure Cloud Authentication - OIDC authentication (AWS/Azure/GCP)
+    # Configure Cloud Authentication - OIDC authentication (AWS/Azure/GCP/Databricks/Snowflake)
     # Setup TFC Credentials - HCP Terraform Cloud credentials (if remote)
     # Initialize Remote Backend - HCP Terraform Cloud init (if remote)
     # Generate State Key - Create S3 state key (if S3)
@@ -146,11 +177,21 @@ runs:
         echo "azure-client-id: ${{ inputs.azure-client-id }}"
         echo "azure-tenant-id: ${{ inputs.azure-tenant-id }}"
         echo "azure-subscription-id: ${{ inputs.azure-subscription-id }}"
+        echo ""
+        echo "=== Snowflake Authentication Inputs ==="
+        echo "snowflake-account: ${{ inputs.snowflake-account }}"
+        echo "snowflake-user: ${{ inputs.snowflake-user }}"
+        echo "snowflake-role: ${{ inputs.snowflake-role }}"
+        echo "snowflake-private-key: [REDACTED - $(if [[ -n '${{ inputs.snowflake-private-key }}' ]]; then echo 'PROVIDED'; else echo 'NOT PROVIDED'; fi)]"
+        echo ""
+        echo "=== Databricks Authentication Inputs ==="
+        echo "databricks-host: ${{ inputs.databricks-host }}"
+        echo "databricks-token: [REDACTED - $(if [[ -n '${{ inputs.databricks-token }}' ]]; then echo 'PROVIDED'; else echo 'NOT PROVIDED'; fi)]"
         echo "================================="
 
     # Validate input configuration
     #############################################
-    - name: Validate Configuration
+    - name: Validate Input Configuration
       id: validate-config
       shell: bash
       run: |
@@ -191,8 +232,20 @@ runs:
               exit 1
             fi
             ;;
+          "snowflake")
+            if [[ -z "${{ inputs.snowflake-account }}" || -z "${{ inputs.snowflake-user }}" || -z "${{ inputs.snowflake-role }}" || -z "${{ inputs.snowflake-private-key }}" ]]; then
+              echo "Error: snowflake-account, snowflake-user, snowflake-role, and snowflake-private-key are required when cloud-provider is 'snowflake'"
+              exit 1
+            fi
+            ;;
+          "databricks")
+            if [[ -z "${{ inputs.databricks-host }}" || -z "${{ inputs.databricks-token }}" ]]; then
+              echo "Error: databricks-host and databricks-token are required when cloud-provider is 'databricks'"
+              exit 1
+            fi
+            ;;
           *)
-            echo "Error: cloud-provider must be 'aws', 'gcp', or 'azure'"
+            echo "Error: cloud-provider must be 'aws', 'gcp', 'azure', 'snowflake', or 'databricks'"
             exit 1
             ;;
         esac
@@ -243,6 +296,28 @@ runs:
       with:
         workload_identity_provider: ${{ inputs.gcp-wif-provider }}
         service_account: ${{ inputs.gcp-service-account }}
+
+    - name: Configure Snowflake Authentication
+      if: inputs.cloud-provider == 'snowflake'
+      shell: bash
+      run: |
+        # Set Snowflake environment variables for Terraform provider
+        echo "SNOWFLAKE_ACCOUNT=${{ inputs.snowflake-account }}" >> $GITHUB_ENV
+        echo "SNOWFLAKE_USER=${{ inputs.snowflake-user }}" >> $GITHUB_ENV
+        echo "SNOWFLAKE_ROLE=${{ inputs.snowflake-role }}" >> $GITHUB_ENV
+        
+        # Write private key to a temporary file
+        echo "${{ inputs.snowflake-private-key }}" > /tmp/snowflake_private_key.pem
+        chmod 600 /tmp/snowflake_private_key.pem
+        echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
+
+    - name: Configure Databricks Authentication
+      if: inputs.cloud-provider == 'databricks'
+      shell: bash
+      run: |
+        # Set Databricks environment variables for Terraform provider
+        echo "DATABRICKS_HOST=${{ inputs.databricks-host }}" >> $GITHUB_ENV
+        echo "DATABRICKS_TOKEN=${{ inputs.databricks-token }}" >> $GITHUB_ENV
 
     #  Terraform Cloud Backend 
     #############################################
