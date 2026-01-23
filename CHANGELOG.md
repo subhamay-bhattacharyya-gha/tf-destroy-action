@@ -1,3 +1,10 @@
+# [1.1.0](https://github.com/subhamay-bhattacharyya-gha/tf-destroy-action/compare/v1.0.0...v1.1.0) (2026-01-23)
+
+
+### Features
+
+* expand README with Databricks and Snowflake support ([977a25a](https://github.com/subhamay-bhattacharyya-gha/tf-destroy-action/commit/977a25aacd2ed22359ed63d4d8abd4025e775bfc))
+
 # 1.0.0 (2025-05-26)
 
 
