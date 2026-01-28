@@ -91,39 +91,6 @@ inputs:
     required: false
     type: string
 
-  # Snowflake Authentication Inputs
-  snowflake-account:
-    description: "Snowflake account identifier. Required when cloud-provider is 'snowflake'."
-    required: false
-    type: string
-
-  snowflake-user:
-    description: "Snowflake user name. Required when cloud-provider is 'snowflake'."
-    required: false
-    type: string
-
-  snowflake-role:
-    description: "Snowflake role name. Required when cloud-provider is 'snowflake'."
-    required: false
-    type: string
-
-  # Snowflake Authentication Secret
-  snowflake-private-key:
-    description: "Snowflake private key for authentication. Required when cloud-provider is 'snowflake'."
-    required: false
-    type: string
-
-  # Databricks Authentication Secrets
-  databricks-host:
-    description: "Databricks workspace URL. Required when cloud-provider is 'databricks'."
-    required: false
-    type: string
-
-  databricks-token:
-    description: "Databricks personal access token. Required when cloud-provider is 'databricks'."
-    required: false
-    type: string
-
 runs:
   using: 'composite'
   steps:
@@ -135,8 +102,8 @@ runs:
     # Set Checkout Ref - Determine checkout reference
     # Checkout Repo - Get the code
     # Setup Terraform - Install Terraform
-    # Download Terraform plan artifact - Get the plan file
-    # Configure Cloud Authentication - OIDC authentication (AWS/Azure/GCP/Databricks/Snowflake)
+    # Configure Cloud Authentication - OIDC authentication (AWS/Azure/GCP)
+    # Note: Snowflake/Databricks auth should be set via env vars in caller workflow
     # Setup TFC Credentials - HCP Terraform Cloud credentials (if remote)
     # Initialize Remote Backend - HCP Terraform Cloud init (if remote)
     # Generate State Key - Create S3 state key (if S3)
@@ -177,15 +144,9 @@ runs:
         echo "azure-tenant-id: ${{ inputs.azure-tenant-id }}"
         echo "azure-subscription-id: ${{ inputs.azure-subscription-id }}"
         echo ""
-        echo "=== Snowflake Authentication Inputs ==="
-        echo "snowflake-account: ${{ inputs.snowflake-account }}"
-        echo "snowflake-user: ${{ inputs.snowflake-user }}"
-        echo "snowflake-role: ${{ inputs.snowflake-role }}"
-        echo "snowflake-private-key: [REDACTED - $(if [[ -n '${{ inputs.snowflake-private-key }}' ]]; then echo 'PROVIDED'; else echo 'NOT PROVIDED'; fi)]"
-        echo ""
-        echo "=== Databricks Authentication Inputs ==="
-        echo "databricks-host: ${{ inputs.databricks-host }}"
-        echo "databricks-token: [REDACTED - $(if [[ -n '${{ inputs.databricks-token }}' ]]; then echo 'PROVIDED'; else echo 'NOT PROVIDED'; fi)]"
+        echo "=== Snowflake/Databricks Authentication ==="
+        echo "Note: Snowflake and Databricks authentication should be configured"
+        echo "      via environment variables in the caller workflow."
         echo "================================="
 
     # Validate input configuration
@@ -243,16 +204,12 @@ runs:
             fi
             ;;
           "snowflake")
-            if [[ -z "${{ inputs.snowflake-account }}" || -z "${{ inputs.snowflake-user }}" || -z "${{ inputs.snowflake-role }}" || -z "${{ inputs.snowflake-private-key }}" ]]; then
-              echo "Error: snowflake-account, snowflake-user, snowflake-role, and snowflake-private-key are required when cloud-provider is 'snowflake'"
-              exit 1
-            fi
+            echo "Snowflake mode: Authentication should be configured via environment variables in the caller workflow."
+            echo "Required environment variables: SNOWFLAKE_ACCOUNT, SNOWFLAKE_USER, SNOWFLAKE_ROLE, SNOWFLAKE_PRIVATE_KEY_PATH"
             ;;
           "databricks")
-            if [[ -z "${{ inputs.databricks-host }}" || -z "${{ inputs.databricks-token }}" ]]; then
-              echo "Error: databricks-host and databricks-token are required when cloud-provider is 'databricks'"
-              exit 1
-            fi
+            echo "Databricks mode: Authentication should be configured via environment variables in the caller workflow."
+            echo "Required environment variables: DATABRICKS_HOST, DATABRICKS_TOKEN"
             ;;
           "platform")
             echo "Platform mode: Checking for cloud provider directories in infra/"
@@ -290,22 +247,12 @@ runs:
 
             # Check for Snowflake directory
             if [[ -d "infra/snowflake" ]]; then
-              echo "Found infra/snowflake directory - validating Snowflake inputs..."
-              if [[ -z "${{ inputs.snowflake-account }}" || -z "${{ inputs.snowflake-user }}" || -z "${{ inputs.snowflake-role }}" || -z "${{ inputs.snowflake-private-key }}" ]]; then
-                VALIDATION_ERRORS="${VALIDATION_ERRORS}\n- Snowflake: snowflake-account, snowflake-user, snowflake-role, and snowflake-private-key are required"
-              else
-                echo "  ✅ Snowflake inputs validated"
-              fi
+              echo "Found infra/snowflake directory - Snowflake authentication should be configured via environment variables in the caller workflow."
             fi
 
             # Check for Databricks directory
             if [[ -d "infra/databricks" ]]; then
-              echo "Found infra/databricks directory - validating Databricks inputs..."
-              if [[ -z "${{ inputs.databricks-host }}" || -z "${{ inputs.databricks-token }}" ]]; then
-                VALIDATION_ERRORS="${VALIDATION_ERRORS}\n- Databricks: databricks-host and databricks-token are required"
-              else
-                echo "  ✅ Databricks inputs validated"
-              fi
+              echo "Found infra/databricks directory - Databricks authentication should be configured via environment variables in the caller workflow."
             fi
 
             # Check if any validation errors occurred
@@ -365,29 +312,6 @@ runs:
       with:
         workload_identity_provider: ${{ inputs.gcp-wif-provider }}
         service_account: ${{ inputs.gcp-service-account }}
-
-    - name: Configure Snowflake Authentication
-      if: (inputs.cloud-provider == 'snowflake') || (inputs.cloud-provider == 'platform' && inputs.snowflake-account != '' && inputs.snowflake-user != '' && inputs.snowflake-role != '' && inputs.snowflake-private-key != '')
-      shell: bash
-      run: |
-        echo "Setting up Snowflake authentication environment variables..."
-        echo "SNOWFLAKE_ACCOUNT=${{ inputs.snowflake-account }}" >> $GITHUB_ENV
-        echo "SNOWFLAKE_USER=${{ inputs.snowflake-user }}" >> $GITHUB_ENV
-        echo "SNOWFLAKE_ROLE=${{ inputs.snowflake-role }}" >> $GITHUB_ENV
-        # Write private key to a temporary file for Terraform provider
-        echo "${{ inputs.snowflake-private-key }}" > /tmp/snowflake_private_key.pem
-        chmod 600 /tmp/snowflake_private_key.pem
-        echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
-        echo "✅ Snowflake authentication configured"
-
-    - name: Configure Databricks Authentication
-      if: (inputs.cloud-provider == 'databricks') || (inputs.cloud-provider == 'platform' && inputs.databricks-host != '' && inputs.databricks-token != '')
-      shell: bash
-      run: |
-        echo "Setting up Databricks authentication environment variables..."
-        echo "DATABRICKS_HOST=${{ inputs.databricks-host }}" >> $GITHUB_ENV
-        echo "DATABRICKS_TOKEN=${{ inputs.databricks-token }}" >> $GITHUB_ENV
-        echo "✅ Databricks authentication configured"
 
     #  Terraform Cloud Backend 
     #############################################

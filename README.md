@@ -10,7 +10,8 @@ A GitHub Composite Action to safely destroy Terraform-managed infrastructure wit
 
 - **Multi-Cloud Support**: Works with AWS, Azure, GCP, Databricks, and Snowflake
 - **Multiple Backend Options**: Supports AWS S3 and HCP Terraform Cloud backends
-- **OIDC Authentication**: Secure authentication using Workload Identity Federation
+- **OIDC Authentication**: Secure authentication using Workload Identity Federation (AWS, Azure, GCP)
+- **Flexible Authentication**: Databricks and Snowflake use environment variables set by caller workflow
 - **Input Validation**: Comprehensive validation with clear error messages
 - **Dynamic Backend Configuration**: Computes backend keys based on CI pipeline context
 - **Destroy Planning**: Creates and analyzes destroy plans via JSON output
@@ -65,7 +66,7 @@ A GitHub Composite Action to safely destroy Terraform-managed infrastructure wit
 | `aws-region`         | AWS region for authentication                                    | No*      | —       | string |
 | `aws-role-to-assume` | AWS IAM role ARN to assume via OIDC                            | No*      | —       | string |
 
-*Required when `cloud-provider` is `aws`
+*Required when `cloud-provider` is `aws` or when using S3 backend
 
 ### Azure Authentication (when `cloud-provider: azure`)
 
@@ -88,35 +89,35 @@ A GitHub Composite Action to safely destroy Terraform-managed infrastructure wit
 
 ### Databricks Authentication (when `cloud-provider: databricks`)
 
-| Name                  | Description                                                     | Required | Default | Type   |
-|-----------------------|-----------------------------------------------------------------|----------|---------|--------|
-| `databricks-host`     | Databricks workspace URL                                        | No*      | —       | string |
-| `databricks-token`    | Databricks personal access token                                | No*      | —       | string |
+Databricks authentication should be configured via environment variables in the caller workflow before invoking this action.
 
-*Required when `cloud-provider` is `databricks`
+| Environment Variable | Description                                                     |
+|---------------------|------------------------------------------------------------------|
+| `DATABRICKS_HOST`   | Databricks workspace URL (e.g., `https://dbc-xxxxx.cloud.databricks.com`) |
+| `DATABRICKS_TOKEN`  | Databricks personal access token                                 |
 
 ### Snowflake Authentication (when `cloud-provider: snowflake`)
 
-| Name                     | Description                                                  | Required | Default | Type   |
-|--------------------------|--------------------------------------------------------------|----------|---------|--------|
-| `snowflake-account`      | Snowflake account identifier                                 | No*      | —       | string |
-| `snowflake-user`         | Snowflake user name                                          | No*      | —       | string |
-| `snowflake-role`         | Snowflake role name                                          | No*      | —       | string |
-| `snowflake-private-key`  | Snowflake private key for authentication                     | No*      | —       | string |
+Snowflake authentication should be configured via environment variables in the caller workflow before invoking this action.
 
-*Required when `cloud-provider` is `snowflake`
+| Environment Variable         | Description                                              |
+|-----------------------------|----------------------------------------------------------|
+| `SNOWFLAKE_ACCOUNT`         | Snowflake account identifier (e.g., `xy12345.us-east-1`) |
+| `SNOWFLAKE_USER`            | Snowflake user name                                      |
+| `SNOWFLAKE_ROLE`            | Snowflake role name                                      |
+| `SNOWFLAKE_PRIVATE_KEY_PATH`| Path to Snowflake private key file                       |
 
 ### Platform Mode (when `cloud-provider: platform`)
 
-When using `platform` mode, the action automatically detects which cloud provider directories exist in your `infra/` folder and validates only the required inputs for those providers. Provide credentials for each provider you use:
+When using `platform` mode, the action automatically detects which cloud provider directories exist in your `infra/` folder and validates only the required inputs for those providers.
 
-| Provider Directory | Required Inputs |
-|-------------------|-----------------|
-| `infra/aws`       | `aws-region`, `aws-role-to-assume` |
-| `infra/azure`     | `azure-client-id`, `azure-tenant-id`, `azure-subscription-id` |
-| `infra/gcp`       | `gcp-wif-provider`, `gcp-service-account` |
-| `infra/databricks`| `databricks-host`, `databricks-token` |
-| `infra/snowflake` | `snowflake-account`, `snowflake-user`, `snowflake-role`, `snowflake-private-key` |
+| Provider Directory | Required Inputs / Environment Variables |
+|-------------------|----------------------------------------|
+| `infra/aws`       | `aws-region`, `aws-role-to-assume` (action inputs) |
+| `infra/azure`     | `azure-client-id`, `azure-tenant-id`, `azure-subscription-id` (action inputs) |
+| `infra/gcp`       | `gcp-wif-provider`, `gcp-service-account` (action inputs) |
+| `infra/databricks`| `DATABRICKS_HOST`, `DATABRICKS_TOKEN` (environment variables) |
+| `infra/snowflake` | `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, `SNOWFLAKE_PRIVATE_KEY_PATH` (environment variables) |
 
 > **Note:** When using S3 backend with platform mode, AWS credentials are always required for backend access.
 
@@ -143,30 +144,21 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/aws/tf
           ci-pipeline: 'true'
-          
-          # Backend Configuration
           backend-type: s3
           cloud-provider: aws
-          
-          # AWS S3 Backend
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
           s3-region: ${{ vars.AWS_REGION }}
           s3-key-prefix: environments/prod
-          
-          # AWS Authentication
           aws-region: ${{ vars.AWS_REGION }}
           aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
 ```
 
 > **Note:** Configure these values in your GitHub repository:
 > - `AWS_REGION` (Variable): Your AWS region (e.g., `us-east-1`)
-> - `AWS_TF_STATE_BUCKET` (Variable): Your S3 bucket name for Terraform state (e.g., `my-company-terraform-state`)
-> - `AWS_ROLE_ARN` (Secret): Your IAM role ARN (e.g., `arn:aws:iam::123456789012:role/GitHubActionsRole`)
-> 
-> Never hardcode IAM role ARNs, bucket names, or regions in your workflow files. Store sensitive values like role ARNs as GitHub repository secrets and non-sensitive values like regions and bucket names as repository variables for security.
+> - `AWS_TF_STATE_BUCKET` (Variable): Your S3 bucket name for Terraform state
+> - `AWS_ROLE_ARN` (Secret): Your IAM role ARN
 
 ### AWS with HCP Terraform Cloud Backend
 
@@ -187,27 +179,13 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/aws/tf
-          
-          # Backend Configuration
           backend-type: remote
           cloud-provider: aws
-          
-          # HCP Terraform Cloud Backend
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
-          
-          # AWS Authentication
           aws-region: ${{ vars.AWS_REGION }}
           aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
 ```
-
-> **Note:** Configure these values in your GitHub repository:
-> - `AWS_REGION` (Variable): Your AWS region (e.g., `us-east-1`)
-> - `AWS_ROLE_ARN` (Secret): Your IAM role ARN (e.g., `arn:aws:iam::123456789012:role/GitHubActionsRole`)
-> - `TFC_API_TOKEN` (Secret): Your HCP Terraform Cloud API token
-> 
-> Store sensitive values like role ARNs and API tokens as GitHub repository secrets for security.
 
 ### Azure with S3 Backend
 
@@ -228,31 +206,17 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/azure/tf
-          
-          # Backend Configuration  
           backend-type: s3
           cloud-provider: azure
-          
-          # AWS S3 Backend (cross-cloud scenario)
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
           s3-region: ${{ vars.AWS_REGION }}
-          
-          # Azure Authentication
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 ```
-
-> **Note:** Configure these values in your GitHub repository:
-> - `AWS_REGION` (Variable): Your AWS region for S3 backend (e.g., `us-east-1`)
-> - `AWS_TF_STATE_BUCKET` (Variable): Your S3 bucket name for Terraform state (e.g., `my-company-terraform-state`)
-> - `AZURE_CLIENT_ID` (Secret): Your Azure client ID for authentication
-> - `AZURE_TENANT_ID` (Secret): Your Azure tenant ID for authentication
-> - `AZURE_SUBSCRIPTION_ID` (Secret): Your Azure subscription ID for authentication
-> 
-> Never hardcode authentication credentials, bucket names, or regions in your workflow files. Store sensitive values like Azure credentials as GitHub repository secrets and non-sensitive values like regions and bucket names as repository variables for security.
 
 ### Azure with HCP Terraform Cloud Backend
 
@@ -273,29 +237,14 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/azure/tf
-          
-          # Backend Configuration
           backend-type: remote
           cloud-provider: azure
-          
-          # HCP Terraform Cloud Backend
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
-          
-          # Azure Authentication
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 ```
-
-> **Note:** Configure these values in your GitHub repository:
-> - `TFC_API_TOKEN` (Secret): Your HCP Terraform Cloud API token
-> - `AZURE_CLIENT_ID` (Secret): Your Azure client ID for authentication
-> - `AZURE_TENANT_ID` (Secret): Your Azure tenant ID for authentication
-> - `AZURE_SUBSCRIPTION_ID` (Secret): Your Azure subscription ID for authentication
-> 
-> Store all authentication values as GitHub repository secrets for security.
 
 ### GCP with S3 Backend
 
@@ -316,29 +265,16 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/gcp/tf
-          
-          # Backend Configuration
           backend-type: s3
           cloud-provider: gcp
-          
-          # AWS S3 Backend (cross-cloud scenario)
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
           s3-region: ${{ vars.AWS_REGION }}
-          
-          # GCP Authentication
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
           gcp-wif-provider: ${{ secrets.GCP_WIF_PROVIDER }}
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 ```
-
-> **Note:** Configure these values in your GitHub repository:
-> - `AWS_REGION` (Variable): Your AWS region for S3 backend (e.g., `us-east-1`)
-> - `AWS_TF_STATE_BUCKET` (Variable): Your S3 bucket name for Terraform state (e.g., `my-company-terraform-state`)
-> - `GCP_WIF_PROVIDER` (Secret): Your GCP Workload Identity Federation provider (e.g., `projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider`)
-> - `GCP_SERVICE_ACCOUNT` (Secret): Your GCP service account email (e.g., `terraform-sa@my-project.iam.gserviceaccount.com`)
-> 
-> Store sensitive values like GCP credentials as GitHub repository secrets and non-sensitive values like regions and bucket names as repository variables for security.
 
 ### GCP with HCP Terraform Cloud Backend
 
@@ -359,28 +295,13 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/gcp/tf
-          release-tag: v1.2.3
-          
-          # Backend Configuration
           backend-type: remote
           cloud-provider: gcp
-          
-          # HCP Terraform Cloud Backend
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
-          
-          # GCP Authentication
           gcp-wif-provider: ${{ secrets.GCP_WIF_PROVIDER }}
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
 ```
-
-> **Note:** Configure these GCP values in your GitHub repository:
-> - `TFC_API_TOKEN` (Secret): Your HCP Terraform Cloud API token
-> - `GCP_WIF_PROVIDER` (Secret): Your GCP Workload Identity Federation provider (e.g., `projects/123456789/locations/global/workloadIdentityPools/github-pool/providers/github-provider`)
-> - `GCP_SERVICE_ACCOUNT` (Secret): Your GCP service account email (e.g., `terraform-sa@my-project.iam.gserviceaccount.com`)
-> 
-> Store all GCP authentication values as GitHub repository secrets for security.
 
 ### Databricks with S3 Backend
 
@@ -396,34 +317,25 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      # Databricks authentication via environment variables
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
 
     steps:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/databricks/tf
-          
-          # Backend Configuration
           backend-type: s3
           cloud-provider: databricks
-          
-          # AWS S3 Backend (cross-cloud scenario)
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
           s3-region: ${{ vars.AWS_REGION }}
-          
-          # Databricks Authentication
-          databricks-host: ${{ secrets.DATABRICKS_HOST }}
-          databricks-token: ${{ secrets.DATABRICKS_TOKEN }}
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
 ```
 
-> **Note:** Configure these values in your GitHub repository:
-> - `AWS_REGION` (Variable): Your AWS region for S3 backend (e.g., `us-east-1`)
-> - `AWS_TF_STATE_BUCKET` (Variable): Your S3 bucket name for Terraform state (e.g., `my-company-terraform-state`)
-> - `DATABRICKS_HOST` (Secret): Your Databricks workspace URL (e.g., `https://dbc-12345678-9abc.cloud.databricks.com`)
-> - `DATABRICKS_TOKEN` (Secret): Your Databricks personal access token
-> 
-> Store sensitive values like Databricks credentials as GitHub repository secrets and non-sensitive values like regions and bucket names as repository variables for security.
+> **Note:** Databricks authentication is configured via environment variables at the job level. The Terraform Databricks provider will automatically use these environment variables.
 
 ### Databricks with HCP Terraform Cloud Backend
 
@@ -439,32 +351,20 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      # Databricks authentication via environment variables
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
 
     steps:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/databricks/tf
-          
-          # Backend Configuration
           backend-type: remote
           cloud-provider: databricks
-          
-          # HCP Terraform Cloud Backend
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
-          
-          # Databricks Authentication
-          databricks-host: ${{ secrets.DATABRICKS_HOST }}
-          databricks-token: ${{ secrets.DATABRICKS_TOKEN }}
 ```
-
-> **Note:** Configure these values in your GitHub repository:
-> - `TFC_API_TOKEN` (Secret): Your HCP Terraform Cloud API token
-> - `DATABRICKS_HOST` (Secret): Your Databricks workspace URL (e.g., `https://dbc-12345678-9abc.cloud.databricks.com`)
-> - `DATABRICKS_TOKEN` (Secret): Your Databricks personal access token
-> 
-> Store all authentication values as GitHub repository secrets for security.
 
 ### Snowflake with S3 Backend
 
@@ -480,38 +380,32 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      # Snowflake authentication via environment variables
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
 
     steps:
+      - name: Setup Snowflake Private Key
+        run: |
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_private_key.pem
+          chmod 600 /tmp/snowflake_private_key.pem
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
+
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/snowflake/tf
-          
-          # Backend Configuration
           backend-type: s3
           cloud-provider: snowflake
-          
-          # AWS S3 Backend (cross-cloud scenario)
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
           s3-region: ${{ vars.AWS_REGION }}
-          
-          # Snowflake Authentication
-          snowflake-account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          snowflake-user: ${{ secrets.SNOWFLAKE_USER }}
-          snowflake-role: ${{ secrets.SNOWFLAKE_ROLE }}
-          snowflake-private-key: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
 ```
 
-> **Note:** Configure these values in your GitHub repository:
-> - `AWS_REGION` (Variable): Your AWS region for S3 backend (e.g., `us-east-1`)
-> - `AWS_TF_STATE_BUCKET` (Variable): Your S3 bucket name for Terraform state (e.g., `my-company-terraform-state`)
-> - `SNOWFLAKE_ACCOUNT` (Secret): Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
-> - `SNOWFLAKE_USER` (Secret): Your Snowflake user name
-> - `SNOWFLAKE_ROLE` (Secret): Your Snowflake role name
-> - `SNOWFLAKE_PRIVATE_KEY` (Secret): Your Snowflake private key for authentication
-> 
-> Store sensitive values like Snowflake credentials as GitHub repository secrets and non-sensitive values like regions and bucket names as repository variables for security.
+> **Note:** Snowflake authentication requires setting up environment variables and the private key file before invoking the action. The Terraform Snowflake provider will automatically use these environment variables.
 
 ### Snowflake with HCP Terraform Cloud Backend
 
@@ -527,40 +421,31 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      # Snowflake authentication via environment variables
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
 
     steps:
+      - name: Setup Snowflake Private Key
+        run: |
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_private_key.pem
+          chmod 600 /tmp/snowflake_private_key.pem
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
+
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra/snowflake/tf
-          
-          # Backend Configuration
           backend-type: remote
           cloud-provider: snowflake
-          
-          # HCP Terraform Cloud Backend
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
-          
-          # Snowflake Authentication
-          snowflake-account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          snowflake-user: ${{ secrets.SNOWFLAKE_USER }}
-          snowflake-role: ${{ secrets.SNOWFLAKE_ROLE }}
-          snowflake-private-key: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
 ```
-
-> **Note:** Configure these values in your GitHub repository:
-> - `TFC_API_TOKEN` (Secret): Your HCP Terraform Cloud API token
-> - `SNOWFLAKE_ACCOUNT` (Secret): Your Snowflake account identifier (e.g., `xy12345.us-east-1`)
-> - `SNOWFLAKE_USER` (Secret): Your Snowflake user name
-> - `SNOWFLAKE_ROLE` (Secret): Your Snowflake role name
-> - `SNOWFLAKE_PRIVATE_KEY` (Secret): Your Snowflake private key for authentication
-> 
-> Store all authentication values as GitHub repository secrets for security.
 
 ### Platform Mode (Multi-Provider)
 
-The `platform` mode allows you to manage infrastructure across multiple cloud providers in a single workflow. The action automatically detects which provider directories exist in your `infra/` folder and authenticates with each one.
+The `platform` mode allows you to manage infrastructure across multiple cloud providers in a single workflow.
 
 ```yaml
 name: Terraform Destroy - Platform Mode (Multi-Provider)
@@ -574,53 +459,48 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    env:
+      # Databricks authentication (if infra/databricks exists)
+      DATABRICKS_HOST: ${{ secrets.DATABRICKS_HOST }}
+      DATABRICKS_TOKEN: ${{ secrets.DATABRICKS_TOKEN }}
+      # Snowflake authentication (if infra/snowflake exists)
+      SNOWFLAKE_ACCOUNT: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+      SNOWFLAKE_USER: ${{ secrets.SNOWFLAKE_USER }}
+      SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
 
     steps:
+      - name: Setup Snowflake Private Key (if needed)
+        if: ${{ secrets.SNOWFLAKE_PRIVATE_KEY != '' }}
+        run: |
+          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_private_key.pem
+          chmod 600 /tmp/snowflake_private_key.pem
+          echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
+
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          # Core Configuration
           terraform-dir: infra
-          
-          # Backend Configuration
           backend-type: s3
           cloud-provider: platform
-          
-          # AWS S3 Backend
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
           s3-region: ${{ vars.AWS_REGION }}
-          
-          # AWS Authentication (required for S3 backend and if infra/aws exists)
+          # AWS Authentication (required for S3 backend)
           aws-region: ${{ vars.AWS_REGION }}
           aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
-          
           # Azure Authentication (if infra/azure exists)
           azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
           azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
           azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
-          
           # GCP Authentication (if infra/gcp exists)
           gcp-wif-provider: ${{ secrets.GCP_WIF_PROVIDER }}
           gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
-          
-          # Databricks Authentication (if infra/databricks exists)
-          databricks-host: ${{ secrets.DATABRICKS_HOST }}
-          databricks-token: ${{ secrets.DATABRICKS_TOKEN }}
-          
-          # Snowflake Authentication (if infra/snowflake exists)
-          snowflake-account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
-          snowflake-user: ${{ secrets.SNOWFLAKE_USER }}
-          snowflake-role: ${{ secrets.SNOWFLAKE_ROLE }}
-          snowflake-private-key: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
 ```
 
-> **Note:** In platform mode, the action:
-> - Automatically detects which provider directories exist under `infra/` (e.g., `infra/aws`, `infra/azure`, `infra/gcp`, `infra/databricks`, `infra/snowflake`)
-> - Only validates and authenticates with providers that have corresponding directories
-> - Requires AWS credentials when using S3 backend, regardless of other providers
-> - Allows you to provide credentials for multiple providers and only uses what's needed
->
-> Configure only the secrets/variables for the providers you actually use in your infrastructure.
+> **Note:** In platform mode:
+> - The action detects which provider directories exist under `infra/`
+> - AWS, Azure, and GCP authentication is handled via action inputs
+> - Databricks and Snowflake authentication must be set via environment variables in the caller workflow
+> - AWS credentials are always required when using S3 backend
 
 ---
 
@@ -632,11 +512,15 @@ This action uses OpenID Connect (OIDC) for secure, keyless authentication where 
 - **AWS**: Configure IAM roles with GitHub OIDC provider
 - **Azure**: Set up Workload Identity Federation with GitHub
 - **GCP**: Configure Workload Identity Federation pools
-- **Databricks**: Uses personal access token authentication
-- **Snowflake**: Uses private key authentication
+
+### Environment Variable Authentication
+For Databricks and Snowflake, authentication is handled via environment variables set in the caller workflow:
+
+- **Databricks**: Set `DATABRICKS_HOST` and `DATABRICKS_TOKEN` environment variables
+- **Snowflake**: Set `SNOWFLAKE_ACCOUNT`, `SNOWFLAKE_USER`, `SNOWFLAKE_ROLE`, and `SNOWFLAKE_PRIVATE_KEY_PATH` environment variables
 
 ### Secrets Management
-- Store sensitive values like `tfc-token`, `databricks-token`, and `snowflake-private-key` in GitHub Secrets
+- Store sensitive values like `tfc-token`, `DATABRICKS_TOKEN`, and `SNOWFLAKE_PRIVATE_KEY` in GitHub Secrets
 - Never hardcode credentials in workflow files
 - Use environment-specific secrets for multi-environment setups
 - For Snowflake, ensure private keys are stored securely and never committed to version control
@@ -659,9 +543,10 @@ The action includes comprehensive debug output showing all input values. Check t
 ### Common Issues
 
 1. **Backend Configuration Errors**: Ensure required inputs match your `backend-type` and `cloud-provider`
-2. **Authentication Failures**: Verify OIDC setup and role permissions
+2. **Authentication Failures**: Verify OIDC setup and role permissions for AWS/Azure/GCP, or environment variables for Databricks/Snowflake
 3. **State Key Conflicts**: Use `s3-key-prefix` to organize state files
 4. **Missing Terraform Files**: Ensure `terraform-dir` points to valid Terraform configuration
+5. **Databricks/Snowflake Auth Issues**: Ensure environment variables are set at the job level before invoking the action
 
 ### Validation
 The action validates all inputs before execution and provides clear error messages for missing or invalid configurations.
