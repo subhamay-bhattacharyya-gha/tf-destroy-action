@@ -119,7 +119,7 @@ runs:
         echo "=== DEBUG: All Action Inputs ==="
         echo "backend-type: ${{ inputs.backend-type }}"
         echo "cloud-provider: ${{ inputs.cloud-provider }}"
-        echo "tf-config-path: ${{ tf-config-path}}"
+        echo "tf-config-path: ${{ inputs.tf-config-path}}"
         echo "release-tag: ${{ inputs.release-tag }}"
         echo "ci-pipeline: ${{ inputs.ci-pipeline }}"
         echo ""
