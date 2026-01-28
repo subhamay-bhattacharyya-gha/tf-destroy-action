@@ -7,8 +7,8 @@ inputs:
     description: "Target cloud provider or platform (aws, gcp, azure, snowflake, databricks, platform)"
     required: true
     type: string
-  terraform-dir:
-    description: "Relative path to the directory containing Terraform configuration files (e.g., 'tf', 'infrastructure')."
+  tf-config-path:
+    description: "Relative path from the repository root to the Terraform configuration directory. This is where your main.tf, variables.tf, and other Terraform files are located."
     required: false
     type: string
     default: "tf"
@@ -119,7 +119,7 @@ runs:
         echo "=== DEBUG: All Action Inputs ==="
         echo "backend-type: ${{ inputs.backend-type }}"
         echo "cloud-provider: ${{ inputs.cloud-provider }}"
-        echo "terraform-dir: ${{ inputs.terraform-dir }}"
+        echo "tf-config-path: ${{ tf-config-path}}"
         echo "release-tag: ${{ inputs.release-tag }}"
         echo "ci-pipeline: ${{ inputs.ci-pipeline }}"
         echo ""
@@ -335,7 +335,7 @@ runs:
       id: terraform-init-remote
       if: inputs.backend-type == 'remote'
       shell: bash
-      working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
+      working-directory: ${{ github.workspace }}/${{ inputs.tf-config-path }}
       run: |
         terraform init -input=false
 
@@ -345,7 +345,7 @@ runs:
       id: generate-tfstate-key
       if: inputs.backend-type == 's3'
       shell: bash
-      working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
+      working-directory: ${{ github.workspace }}/${{ inputs.tf-config-path }}
       run: |
         if [[ "${{ inputs.ci-pipeline }}" == "true" ]]; then
           state_key="${{ github.repository }}/${{ github.sha }}/terraform.tfstate"
@@ -358,7 +358,7 @@ runs:
       id: terraform-init-s3
       if: inputs.backend-type == 's3'
       shell: bash
-      working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
+      working-directory: ${{ github.workspace }}/${{ inputs.tf-config-path }}
       run: |
         # Build state key with optional prefix
         if [[ -n "${{ inputs.s3-key-prefix }}" ]]; then
@@ -380,7 +380,7 @@ runs:
     - name: Terraform Destroy
       id: tf-destroy
       shell: bash
-      working-directory: ${{ github.workspace }}/${{ inputs.terraform-dir }}
+      working-directory: ${{ github.workspace }}/${{ inputs.tf-config-path }}
       run: |
         START_TIME=$(date -u "+%Y-%m-%d %H:%M:%S UTC")
 

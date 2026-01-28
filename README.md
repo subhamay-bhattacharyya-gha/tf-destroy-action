@@ -30,7 +30,7 @@ A GitHub Composite Action to safely destroy Terraform-managed infrastructure wit
 
 | Name              | Description                                                         | Required | Default | Type   |
 |-------------------|---------------------------------------------------------------------|----------|---------|--------|
-| `terraform-dir`   | Relative path to Terraform configuration directory                  | No       | `tf`    | string |
+| `tf-config-path`  | Relative path from repository root to Terraform configuration directory | No       | `tf`    | string |
 | `release-tag`     | Git release tag to check out (uses latest commit if omitted)       | No       | `""`    | string |
 | `ci-pipeline`     | Include commit SHA in state key for CI/CD pipelines                | No       | `false` | string |
 
@@ -144,7 +144,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/aws/tf
+          tf-config-path: infra/aws/tf
           ci-pipeline: 'true'
           backend-type: s3
           cloud-provider: aws
@@ -179,7 +179,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/aws/tf
+          tf-config-path: infra/aws/tf
           backend-type: remote
           cloud-provider: aws
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
@@ -206,7 +206,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/azure/tf
+          tf-config-path: infra/azure/tf
           backend-type: s3
           cloud-provider: azure
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
@@ -237,7 +237,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/azure/tf
+          tf-config-path: infra/azure/tf
           backend-type: remote
           cloud-provider: azure
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
@@ -265,7 +265,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/gcp/tf
+          tf-config-path: infra/gcp/tf
           backend-type: s3
           cloud-provider: gcp
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
@@ -295,7 +295,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/gcp/tf
+          tf-config-path: infra/gcp/tf
           backend-type: remote
           cloud-provider: gcp
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
@@ -326,7 +326,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/databricks/tf
+          tf-config-path: infra/databricks/tf
           backend-type: s3
           cloud-provider: databricks
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
@@ -360,7 +360,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/databricks/tf
+          tf-config-path: infra/databricks/tf
           backend-type: remote
           cloud-provider: databricks
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
@@ -396,7 +396,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/snowflake/tf
+          tf-config-path: infra/snowflake/tf
           backend-type: s3
           cloud-provider: snowflake
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
@@ -437,7 +437,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra/snowflake/tf
+          tf-config-path: infra/snowflake/tf
           backend-type: remote
           cloud-provider: snowflake
           tfc-token: ${{ secrets.TFC_API_TOKEN }}
@@ -479,7 +479,7 @@ jobs:
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
         with:
-          terraform-dir: infra
+          tf-config-path: infra
           backend-type: s3
           cloud-provider: platform
           s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
@@ -545,7 +545,7 @@ The action includes comprehensive debug output showing all input values. Check t
 1. **Backend Configuration Errors**: Ensure required inputs match your `backend-type` and `cloud-provider`
 2. **Authentication Failures**: Verify OIDC setup and role permissions for AWS/Azure/GCP, or environment variables for Databricks/Snowflake
 3. **State Key Conflicts**: Use `s3-key-prefix` to organize state files
-4. **Missing Terraform Files**: Ensure `terraform-dir` points to valid Terraform configuration
+4. **Missing Terraform Files**: Ensure `tf-config-path` points to valid Terraform configuration
 5. **Databricks/Snowflake Auth Issues**: Ensure environment variables are set at the job level before invoking the action
 
 ### Validation
