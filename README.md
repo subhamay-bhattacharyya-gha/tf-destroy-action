@@ -38,7 +38,7 @@ A GitHub Composite Action to safely destroy Terraform-managed infrastructure wit
 | Name              | Description                                                         | Required | Default | Type   |
 |-------------------|---------------------------------------------------------------------|----------|---------|--------|
 | `backend-type`    | Backend type: `s3` for AWS S3 or `remote` for HCP Terraform Cloud  | No       | `s3`    | string |
-| `cloud-provider`  | Cloud provider: `aws`, `azure`, `gcp`, `databricks`, or `snowflake`  | **Yes**  | —       | string |
+| `cloud-provider`  | Target cloud provider or platform: `aws`, `azure`, `gcp`, `databricks`, `snowflake`, or `platform` | **Yes**  | —       | string |
 
 ### AWS S3 Backend (when `backend-type: s3`)
 
@@ -105,6 +105,20 @@ A GitHub Composite Action to safely destroy Terraform-managed infrastructure wit
 | `snowflake-private-key`  | Snowflake private key for authentication                     | No*      | —       | string |
 
 *Required when `cloud-provider` is `snowflake`
+
+### Platform Mode (when `cloud-provider: platform`)
+
+When using `platform` mode, the action automatically detects which cloud provider directories exist in your `infra/` folder and validates only the required inputs for those providers. Provide credentials for each provider you use:
+
+| Provider Directory | Required Inputs |
+|-------------------|-----------------|
+| `infra/aws`       | `aws-region`, `aws-role-to-assume` |
+| `infra/azure`     | `azure-client-id`, `azure-tenant-id`, `azure-subscription-id` |
+| `infra/gcp`       | `gcp-wif-provider`, `gcp-service-account` |
+| `infra/databricks`| `databricks-host`, `databricks-token` |
+| `infra/snowflake` | `snowflake-account`, `snowflake-user`, `snowflake-role`, `snowflake-private-key` |
+
+> **Note:** When using S3 backend with platform mode, AWS credentials are always required for backend access.
 
 ---
 
@@ -543,6 +557,70 @@ jobs:
 > - `SNOWFLAKE_PRIVATE_KEY` (Secret): Your Snowflake private key for authentication
 > 
 > Store all authentication values as GitHub repository secrets for security.
+
+### Platform Mode (Multi-Provider)
+
+The `platform` mode allows you to manage infrastructure across multiple cloud providers in a single workflow. The action automatically detects which provider directories exist in your `infra/` folder and authenticates with each one.
+
+```yaml
+name: Terraform Destroy - Platform Mode (Multi-Provider)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  terraform-destroy:
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+
+    steps:
+      - name: Destroy Terraform Infrastructure
+        uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
+        with:
+          # Core Configuration
+          terraform-dir: infra
+          
+          # Backend Configuration
+          backend-type: s3
+          cloud-provider: platform
+          
+          # AWS S3 Backend
+          s3-bucket: ${{ vars.AWS_TF_STATE_BUCKET }}
+          s3-region: ${{ vars.AWS_REGION }}
+          
+          # AWS Authentication (required for S3 backend and if infra/aws exists)
+          aws-region: ${{ vars.AWS_REGION }}
+          aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
+          
+          # Azure Authentication (if infra/azure exists)
+          azure-client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          azure-tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          azure-subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
+          
+          # GCP Authentication (if infra/gcp exists)
+          gcp-wif-provider: ${{ secrets.GCP_WIF_PROVIDER }}
+          gcp-service-account: ${{ secrets.GCP_SERVICE_ACCOUNT }}
+          
+          # Databricks Authentication (if infra/databricks exists)
+          databricks-host: ${{ secrets.DATABRICKS_HOST }}
+          databricks-token: ${{ secrets.DATABRICKS_TOKEN }}
+          
+          # Snowflake Authentication (if infra/snowflake exists)
+          snowflake-account: ${{ secrets.SNOWFLAKE_ACCOUNT }}
+          snowflake-user: ${{ secrets.SNOWFLAKE_USER }}
+          snowflake-role: ${{ secrets.SNOWFLAKE_ROLE }}
+          snowflake-private-key: ${{ secrets.SNOWFLAKE_PRIVATE_KEY }}
+```
+
+> **Note:** In platform mode, the action:
+> - Automatically detects which provider directories exist under `infra/` (e.g., `infra/aws`, `infra/azure`, `infra/gcp`, `infra/databricks`, `infra/snowflake`)
+> - Only validates and authenticates with providers that have corresponding directories
+> - Requires AWS credentials when using S3 backend, regardless of other providers
+> - Allows you to provide credentials for multiple providers and only uses what's needed
+>
+> Configure only the secrets/variables for the providers you actually use in your infrastructure.
 
 ---
 
