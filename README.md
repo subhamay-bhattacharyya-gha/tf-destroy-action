@@ -387,11 +387,27 @@ jobs:
       SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
 
     steps:
-      - name: Setup Snowflake Private Key
+      - name: Set Snowflake Private Key
         run: |
-          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_private_key.pem
-          chmod 600 /tmp/snowflake_private_key.pem
-          echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
+          printf '%b' "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_key.p8
+          echo "SNOWFLAKE_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/snowflake_key.p8 >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Debug Key Format
+        run: |
+          echo "First 50 chars of key:"
+          echo "${SNOWFLAKE_PRIVATE_KEY:0:50}"
+          echo "---"
+          echo "Key contains literal backslash-n: "
+          if [[ "$SNOWFLAKE_PRIVATE_KEY" == *'\\n'* ]]; then
+            echo "YES - problem found"
+          else
+            echo "NO"
+          fi
+          echo "---"
+          echo "Line count:"
+          echo "$SNOWFLAKE_PRIVATE_KEY" | wc -l
 
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
@@ -405,7 +421,7 @@ jobs:
           aws-role-to-assume: ${{ secrets.AWS_ROLE_ARN }}
 ```
 
-> **Note:** Snowflake authentication requires setting up environment variables and the private key file before invoking the action. The Terraform Snowflake provider will automatically use these environment variables.
+> **Note:** Snowflake authentication requires setting up environment variables and the private key before invoking the action. The `printf '%b'` command properly handles escaped newlines in the private key. The debug step can be removed once authentication is working correctly.
 
 ### Snowflake with HCP Terraform Cloud Backend
 
@@ -428,11 +444,27 @@ jobs:
       SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
 
     steps:
-      - name: Setup Snowflake Private Key
+      - name: Set Snowflake Private Key
         run: |
-          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_private_key.pem
-          chmod 600 /tmp/snowflake_private_key.pem
-          echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
+          printf '%b' "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_key.p8
+          echo "SNOWFLAKE_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/snowflake_key.p8 >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
+
+      - name: Debug Key Format
+        run: |
+          echo "First 50 chars of key:"
+          echo "${SNOWFLAKE_PRIVATE_KEY:0:50}"
+          echo "---"
+          echo "Key contains literal backslash-n: "
+          if [[ "$SNOWFLAKE_PRIVATE_KEY" == *'\\n'* ]]; then
+            echo "YES - problem found"
+          else
+            echo "NO"
+          fi
+          echo "---"
+          echo "Line count:"
+          echo "$SNOWFLAKE_PRIVATE_KEY" | wc -l
 
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
@@ -469,12 +501,13 @@ jobs:
       SNOWFLAKE_ROLE: ${{ secrets.SNOWFLAKE_ROLE }}
 
     steps:
-      - name: Setup Snowflake Private Key (if needed)
+      - name: Set Snowflake Private Key (if needed)
         if: ${{ secrets.SNOWFLAKE_PRIVATE_KEY != '' }}
         run: |
-          echo "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_private_key.pem
-          chmod 600 /tmp/snowflake_private_key.pem
-          echo "SNOWFLAKE_PRIVATE_KEY_PATH=/tmp/snowflake_private_key.pem" >> $GITHUB_ENV
+          printf '%b' "${{ secrets.SNOWFLAKE_PRIVATE_KEY }}" > /tmp/snowflake_key.p8
+          echo "SNOWFLAKE_PRIVATE_KEY<<EOF" >> $GITHUB_ENV
+          cat /tmp/snowflake_key.p8 >> $GITHUB_ENV
+          echo "EOF" >> $GITHUB_ENV
 
       - name: Destroy Terraform Infrastructure
         uses: subhamay-bhattacharyya-gha/tf-destroy-action@main
