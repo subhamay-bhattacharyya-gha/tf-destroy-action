@@ -284,7 +284,7 @@ runs:
 
     - name: Configure Azure Authentication
       if: inputs.cloud-provider == 'azure'
-      uses: azure/login@v2
+      uses: azure/login@v3
       with:
         client-id: ${{ inputs.azure-client-id }}
         tenant-id: ${{ inputs.azure-tenant-id }}
